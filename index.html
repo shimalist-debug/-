@@ -413,6 +413,13 @@ const DEF_TIME_PRESETS=[
   {id:'eve',   name:'夜',    start:'19:00',end:'21:00'},
 ];
 const DEF_SETTINGS={appName:'バ・スケ',appIcon:'🏀',apiKey:'',fbProjectId:'',familyCode:'',timePresets:DEF_TIME_PRESETS};
+// 旧形式（opponent単体）→ 新形式（games配列）の変換
+const normBK=b=>{
+  if(!b)return null;
+  if(b.games)return b;
+  return{tournamentName:b.tournamentName||'',venue:b.venue||'',
+    games:b.opponent!==undefined?[{opponent:b.opponent||'',myScore:b.myScore??null,opponentScore:b.opponentScore??null}]:[]};
+};
 
 /* ── TOGGLE ── */
 const Toggle=({on,onClick})=><div className={`tog ${on?'on':''}`} onClick={onClick}><div className="tog-thumb"/></div>;
@@ -428,11 +435,16 @@ function EventModal({event,members,initDate,onSave,onDelete,onClose,venueNotes,o
   const[memId,setMemId]=useState(event?.memberId||members[0]?.id||'');
   const[notes,setNotes]=useState(event?.notes||'');
   const[isBK, setIsBK] =useState(event?.isBasketball||false);
-  const[tourn,setTourn]=useState(event?.basketball?.tournamentName||'');
-  const[venue,setVenue]=useState(event?.basketball?.venue||'');
-  const[opp,  setOpp]  =useState(event?.basketball?.opponent||'');
-  const[mySc, setMySc] =useState(event?.basketball?.myScore??'');
-  const[oppSc,setOppSc]=useState(event?.basketball?.opponentScore??'');
+  const bk0=normBK(event?.basketball);
+  const[tourn,setTourn]=useState(bk0?.tournamentName||'');
+  const[venue,setVenue]=useState(bk0?.venue||'');
+  const[games,setGames]=useState(()=>{
+    if(!bk0)return[{opponent:'',myScore:'',opponentScore:''}];
+    return bk0.games.length>0?bk0.games.map(g=>({opponent:g.opponent||'',myScore:g.myScore??'',opponentScore:g.opponentScore??''})):[{opponent:'',myScore:'',opponentScore:''}];
+  });
+  const addGame=()=>setGames(p=>[...p,{opponent:'',myScore:'',opponentScore:''}]);
+  const removeGame=idx=>setGames(p=>p.filter((_,i)=>i!==idx));
+  const updateGame=(idx,f,v)=>setGames(p=>p.map((g,i)=>i===idx?{...g,[f]:v}:g));
   const[recur,setRecur]=useState(event?.recurring||'none');
   const[rEnd, setREnd] =useState(event?.recurEnd||'');
   const[venueNote,setVenueNote]=useState('');
@@ -461,7 +473,7 @@ function EventModal({event,members,initDate,onSave,onDelete,onClose,venueNotes,o
     const ev={
       id:event?.id||uid(),title:title.trim(),date,startTime:stime,endTime:etime,memberId:memId,notes,
       isBasketball:isBK,
-      basketball:isBK?{tournamentName:tourn,venue:venue.trim(),opponent:opp,myScore:mySc!==''?Number(mySc):null,opponentScore:oppSc!==''?Number(oppSc):null}:null,
+      basketball:isBK?{tournamentName:tourn,venue:venue.trim(),games:games.map(g=>({opponent:g.opponent,myScore:g.myScore!==''?Number(g.myScore):null,opponentScore:g.opponentScore!==''?Number(g.opponentScore):null}))}:null,
       recurring:recur,recurEnd:recur!=='none'?rEnd:null,
       recurGroupId:event?.recurGroupId||null,
       createdAt:event?.createdAt||new Date().toISOString(),
@@ -563,15 +575,28 @@ function EventModal({event,members,initDate,onSave,onDelete,onClose,venueNotes,o
                 }
               </div>
             )}
-            <div className="fg"><label className="fl">対戦相手</label><input className="fi" placeholder="例：〇〇クラブ" value={opp} onChange={e=>setOpp(e.target.value)}/></div>
-            <div className="fg">
-              <label className="fl">スコア（試合後に記入）</label>
-              <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
-                <input className="fi" type="number" min="0" placeholder="自チーム" value={mySc} onChange={e=>setMySc(e.target.value)} style={{textAlign:'center',fontSize:'22px',fontWeight:'800',flex:1}}/>
-                <span style={{fontSize:'22px',fontWeight:'900',color:'var(--ts)',flexShrink:0}}>−</span>
-                <input className="fi" type="number" min="0" placeholder="相手" value={oppSc} onChange={e=>setOppSc(e.target.value)} style={{textAlign:'center',fontSize:'22px',fontWeight:'800',flex:1}}/>
+            {/* 複数試合 */}
+            {games.map((g,i)=>(
+              <div key={i} style={{background:'#F8FAFC',border:'1.5px solid var(--bd)',borderRadius:'12px',padding:'12px',marginBottom:'10px'}}>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'8px'}}>
+                  <span style={{fontSize:'12px',fontWeight:'800',color:'var(--p)'}}>第{i+1}試合</span>
+                  {games.length>1&&<button onClick={()=>removeGame(i)} style={{border:'none',background:'#FEE2E2',color:'#DC2626',borderRadius:'6px',padding:'3px 9px',fontSize:'11px',fontWeight:'700',cursor:'pointer',touchAction:'manipulation'}}>✕ 削除</button>}
+                </div>
+                <div className="fg" style={{marginBottom:'8px'}}>
+                  <label className="fl">対戦相手</label>
+                  <input className="fi" placeholder="例：〇〇クラブ" value={g.opponent} onChange={e=>updateGame(i,'opponent',e.target.value)}/>
+                </div>
+                <label className="fl">スコア（試合後に記入）</label>
+                <div style={{display:'flex',alignItems:'center',gap:'10px',marginTop:'4px'}}>
+                  <input className="fi" type="number" min="0" placeholder="自チーム" value={g.myScore} onChange={e=>updateGame(i,'myScore',e.target.value)} style={{textAlign:'center',fontSize:'22px',fontWeight:'800',flex:1}}/>
+                  <span style={{fontSize:'22px',fontWeight:'900',color:'var(--ts)',flexShrink:0}}>−</span>
+                  <input className="fi" type="number" min="0" placeholder="相手" value={g.opponentScore} onChange={e=>updateGame(i,'opponentScore',e.target.value)} style={{textAlign:'center',fontSize:'22px',fontWeight:'800',flex:1}}/>
+                </div>
               </div>
-            </div>
+            ))}
+            <button onClick={addGame} style={{width:'100%',padding:'10px',border:'1.5px dashed var(--p)',background:'var(--pl)',color:'var(--p)',borderRadius:'10px',fontSize:'13px',fontWeight:'700',cursor:'pointer',touchAction:'manipulation',marginBottom:'8px'}}>
+              ＋ 試合を追加
+            </button>
           </div>
         </>}
 
