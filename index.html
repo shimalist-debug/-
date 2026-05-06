@@ -1103,19 +1103,100 @@ function DiaryView({diary,onDiaryChange}){
 ══════════════════════════════════════════════════ */
 function BasketballView({events,members,onEdit,venueNotes,onSaveVenueNote}){
   const bkEvs=useMemo(()=>events.filter(e=>e.isBasketball).sort((a,b)=>b.date.localeCompare(a.date)),[events]);
+  // games配列対応の統計（normBKで旧形式も変換）
   const stats=useMemo(()=>{
-    const played=bkEvs.filter(e=>e.basketball?.myScore!==null&&e.basketball?.opponentScore!==null);
-    return{total:bkEvs.length,played:played.length,wins:played.filter(e=>e.basketball.myScore>e.basketball.opponentScore).length,losses:played.filter(e=>e.basketball.myScore<e.basketball.opponentScore).length};
+    let wins=0,losses=0,played=0;
+    bkEvs.forEach(ev=>{
+      const b=normBK(ev.basketball);
+      if(!b)return;
+      (b.games||[]).forEach(g=>{
+        if(g.myScore!==null&&g.myScore!==undefined&&g.opponentScore!==null&&g.opponentScore!==undefined){
+          played++;
+          if(g.myScore>g.opponentScore)wins++;
+          else if(g.myScore<g.opponentScore)losses++;
+        }
+      });
+    });
+    return{total:bkEvs.length,played,wins,losses};
   },[bkEvs]);
-  const getResult=b=>{if(b?.myScore===null||b?.opponentScore===null||b?.myScore===undefined)return null;return b.myScore>b.opponentScore?'win':b.myScore<b.opponentScore?'lose':'draw';};
+  const getGameResult=g=>{if(g.myScore===null||g.myScore===undefined||g.opponentScore===null||g.opponentScore===undefined)return null;return g.myScore>g.opponentScore?'win':g.myScore<g.opponentScore?'lose':'draw';};
   const getMem=id=>members.find(m=>m.id===id);
   const winPct=stats.played>0?Math.round(stats.wins/stats.played*100):0;
   const[tab,setTab]=useState('games');
-  const[editVenue,setEditVenue]=useState(null); // {name, note}
+  const[editVenue,setEditVenue]=useState(null);
+  const[detailEv,setDetailEv]=useState(null); // 詳細表示中のイベント
   const venueList=Object.entries(venueNotes||{});
 
   if(bkEvs.length===0)return<div className="empty"><div className="empty-ic">🏀</div><div className="empty-t">試合記録がありません</div><div className="empty-s">予定追加時に「バスケの試合として記録」をONにしてください</div></div>;
   return(
+    <div>
+    {/* ── 試合詳細シート ── */}
+    {detailEv&&(()=>{
+      const ev=detailEv;
+      const b=normBK(ev.basketball);
+      const mem=getMem(ev.memberId);
+      const games=b?.games||[];
+      return(
+        <div className="overlay" onClick={e=>e.target===e.currentTarget&&setDetailEv(null)}>
+          <div className="sheet">
+            <div className="s-handle"/>
+            <div className="s-hdr">
+              <span className="s-title">試合結果</span>
+              <button className="x-btn" onClick={()=>setDetailEv(null)}
+                onTouchEnd={e=>{e.preventDefault();e.stopPropagation();setDetailEv(null);}}>✕</button>
+            </div>
+            {/* 基本情報 */}
+            <div style={{padding:'4px 16px 12px'}}>
+              {b?.tournamentName&&<div style={{fontSize:'11px',fontWeight:'700',color:'var(--p)',marginBottom:'4px',textTransform:'uppercase',letterSpacing:'.5px'}}>{b.tournamentName}</div>}
+              <div style={{fontSize:'18px',fontWeight:'800',marginBottom:'6px'}}>{ev.title}</div>
+              <div style={{display:'flex',gap:'12px',flexWrap:'wrap',fontSize:'12px',color:'var(--ts)',fontWeight:'600'}}>
+                <span>📅 {fmtJa(ev.date)}</span>
+                {b?.venue&&<span>📍 {b.venue}</span>}
+                {mem&&<span style={{color:mem.color}}>{mem.emoji} {mem.name}</span>}
+              </div>
+            </div>
+            <div className="divider"/>
+            {/* 試合結果一覧 */}
+            <div style={{padding:'10px 16px'}}>
+              {games.length===0&&<div style={{color:'var(--tl)',fontSize:'13px',textAlign:'center',padding:'20px'}}>試合データがありません</div>}
+              {games.map((g,i)=>{
+                const res=getGameResult(g);
+                const hasScore=g.myScore!==null&&g.myScore!==undefined&&g.opponentScore!==null&&g.opponentScore!==undefined;
+                return(
+                  <div key={i} style={{background:res==='win'?'#F0FDF4':res==='lose'?'#FEF2F2':'#F8FAFC',border:`1.5px solid ${res==='win'?'#86EFAC':res==='lose'?'#FECACA':'var(--bd)'}`,borderRadius:'14px',padding:'14px',marginBottom:'10px'}}>
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'10px'}}>
+                      <span style={{fontSize:'12px',fontWeight:'800',color:'var(--ts)'}}>第{i+1}試合</span>
+                      {res&&<span style={{fontSize:'12px',fontWeight:'800',padding:'3px 10px',borderRadius:'20px',background:res==='win'?'#16A34A':'#DC2626',color:'#fff'}}>{res==='win'?'🏆 勝利':'😤 敗北'}</span>}
+                      {!res&&<span style={{fontSize:'12px',fontWeight:'700',color:'var(--tl)'}}>未登録</span>}
+                    </div>
+                    {g.opponent&&<div style={{textAlign:'center',fontSize:'13px',color:'var(--ts)',marginBottom:'8px',fontWeight:'600'}}>vs {g.opponent}</div>}
+                    {hasScore&&(
+                      <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:'16px'}}>
+                        <div style={{textAlign:'center'}}>
+                          <div style={{fontSize:'11px',color:'var(--ts)',fontWeight:'700',marginBottom:'3px'}}>自チーム</div>
+                          <div style={{fontSize:'40px',fontWeight:'900',color:res==='win'?'#16A34A':res==='lose'?'#DC2626':'var(--t)',lineHeight:1}}>{g.myScore}</div>
+                        </div>
+                        <div style={{fontSize:'22px',fontWeight:'900',color:'var(--tl)'}}>−</div>
+                        <div style={{textAlign:'center'}}>
+                          <div style={{fontSize:'11px',color:'var(--ts)',fontWeight:'700',marginBottom:'3px'}}>相手</div>
+                          <div style={{fontSize:'40px',fontWeight:'900',color:'var(--t)',lineHeight:1}}>{g.opponentScore}</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {ev.notes&&<div style={{fontSize:'13px',color:'var(--ts)',background:'#F8FAFC',borderRadius:'10px',padding:'10px 12px',marginTop:'4px',lineHeight:'1.6'}}>📝 {ev.notes}</div>}
+            </div>
+            <div className="divider"/>
+            <div style={{padding:'8px 16px 4px',display:'flex',gap:'10px'}}>
+              <button className="btn-p" style={{flex:1}} onClick={()=>{setDetailEv(null);onEdit(ev);}}>✏️ 編集する</button>
+            </div>
+            <div style={{height:'8px'}}/>
+          </div>
+        </div>
+      );
+    })()}
     <div>
       {/* タブ切替 */}
       <div style={{display:'flex',padding:'10px 12px 0',gap:'8px'}}>
@@ -1137,29 +1218,35 @@ function BasketballView({events,members,onEdit,venueNotes,onSaveVenueNote}){
         </div>}
         <div style={{padding:'0 12px 8px',fontSize:'12px',fontWeight:'700',color:'var(--ts)'}}>試合一覧</div>
         {bkEvs.map(ev=>{
-          const b=ev.basketball;const mem=getMem(ev.memberId);const res=getResult(b);
+          const b=normBK(ev.basketball);const mem=getMem(ev.memberId);
+          const games=b?.games||[];
+          // 勝敗サマリー
+          let w=0,l=0,d=0;
+          games.forEach(g=>{const r=getGameResult(g);if(r==='win')w++;else if(r==='lose')l++;else if(r==='draw')d++;});
+          const hasResults=games.some(g=>g.myScore!==null&&g.myScore!==undefined);
           const vn=b?.venue&&venueNotes?.[b.venue];
           return(
-            <div key={ev.id} className="bk-item" onClick={()=>onEdit(ev)}>
+            <div key={ev.id} className="bk-item" onClick={()=>setDetailEv(ev)}>
               <div className="bk-top">
                 <div>
                   <div className="bk-tourn">{b?.tournamentName||'大会名未設定'}</div>
                   <div className="bk-title">{ev.title}</div>
                   {b?.venue&&<div style={{fontSize:'11px',color:'var(--ts)',marginTop:'3px'}}>📍 {b.venue}</div>}
                 </div>
-                <div style={{textAlign:'right'}}><div className="bk-date">{fmtJa(ev.date)}</div>{mem&&<div style={{fontSize:'11px',color:mem.color,marginTop:'3px',fontWeight:'600'}}>{mem.emoji} {mem.name}</div>}</div>
-              </div>
-              {b?.opponent&&<div className="bk-sr">
-                <div className="bk-team" style={{textAlign:'right'}}>
-                  <div className="bk-ts">自チーム</div><div className="bk-tn">わがチーム</div>
-                  {res&&<div className={`rb ${res==='win'?'rw':'rl'}`}>{res==='win'?'勝利':'敗北'}</div>}
-                  {!res&&<div className="rb rt">未登録</div>}
+                <div style={{textAlign:'right'}}>
+                  <div className="bk-date">{fmtJa(ev.date)}</div>
+                  {mem&&<div style={{fontSize:'11px',color:mem.color,marginTop:'3px',fontWeight:'600'}}>{mem.emoji} {mem.name}</div>}
+                  <div style={{fontSize:'11px',color:'var(--tl)',marginTop:'3px'}}>{games.length}試合</div>
                 </div>
-                <div className="bk-score">{b.myScore!==null?b.myScore:'?'}<span style={{fontSize:'16px',color:'var(--tl)'}}> - </span>{b.opponentScore!==null?b.opponentScore:'?'}</div>
-                <div className="bk-team"><div className="bk-ts">相手チーム</div><div className="bk-tn">{b.opponent}</div></div>
+              </div>
+              {/* 勝敗バッジ */}
+              {hasResults&&<div style={{display:'flex',gap:'6px',flexWrap:'wrap',marginTop:'6px'}}>
+                {w>0&&<span style={{background:'#16A34A',color:'#fff',borderRadius:'20px',padding:'2px 10px',fontSize:'11px',fontWeight:'700'}}>🏆 {w}勝</span>}
+                {l>0&&<span style={{background:'#DC2626',color:'#fff',borderRadius:'20px',padding:'2px 10px',fontSize:'11px',fontWeight:'700'}}>😤 {l}敗</span>}
+                {d>0&&<span style={{background:'var(--ts)',color:'#fff',borderRadius:'20px',padding:'2px 10px',fontSize:'11px',fontWeight:'700'}}>{d}引分</span>}
               </div>}
+              {!hasResults&&<div style={{fontSize:'11px',color:'var(--tl)',marginTop:'4px'}}>スコア未登録</div>}
               {vn&&<div style={{fontSize:'11px',color:'#92400E',background:'#FFFBEB',border:'1px solid #FCD34D',borderRadius:'7px',padding:'6px 9px',marginTop:'9px'}}>📍 <strong>{b.venue}</strong>：{vn}</div>}
-              {ev.notes&&<div style={{fontSize:'12px',color:'var(--ts)',marginTop:'10px',borderTop:'1px solid var(--bd)',paddingTop:'10px'}}>{ev.notes}</div>}
             </div>
           );
         })}
@@ -1196,7 +1283,8 @@ function BasketballView({events,members,onEdit,venueNotes,onSaveVenueNote}){
           </div>
         ))}
       </div>}
-    </div>
+    </div>{/* inner */}
+    </div>{/* outer wrapper */}
   );
 }
 
@@ -1253,7 +1341,11 @@ function ImportView({members,onAddEvents}){
     sr.onstart=()=>setListening(true);
     sr.onresult=e=>{
       let fin='',intr='';
-      Array.from(e.results).forEach(r=>{if(r.isFinal)fin+=r[0].transcript;else intr+=r[0].transcript;});
+      // resultIndex から処理することで過去の確定結果の重複追加を防ぐ
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        if(e.results[i].isFinal)fin+=e.results[i][0].transcript;
+        else intr+=e.results[i][0].transcript;
+      }
       if(fin){setText(prev=>(prev&&!prev.endsWith('\n')?prev+'\n':prev)+fin);setInterim('');}
       else setInterim(intr);
     };
