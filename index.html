@@ -105,6 +105,8 @@
     .dc.today:not(.sel) .dn{border:2.5px solid var(--p);color:var(--p);font-weight:700}
     .dc.sel .dn{background:var(--p);color:#fff;font-weight:700}
     .dc.suncol:not(.sel) .dn{color:#EF4444}.dc.satcol:not(.sel) .dn{color:#3B82F6}
+    .dc.holiday:not(.sel) .dn{color:#EF4444}
+    .dc.marked:active{background:var(--pl)}
     .dots{display:flex;gap:2px;justify-content:center;flex-wrap:wrap;min-height:9px;padding:1px 2px}
     .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
     .dot-d{width:6px;height:6px;border-radius:2px;background:var(--d);flex-shrink:0}
@@ -123,6 +125,15 @@
     .wk-dhdr-num.sel:not(.today){border:2px solid var(--p);color:var(--p);font-weight:700}
     .wk-dhdr-num.suncol:not(.today):not(.sel){color:#EF4444}
     .wk-dhdr-num.satcol:not(.today):not(.sel){color:#3B82F6}
+    .wk-dhdr-num.holiday:not(.today):not(.sel){color:#EF4444}
+    .date-mark-row{display:flex;align-items:center;gap:6px;padding:4px 0 8px;flex-wrap:wrap}
+    .date-mark-row .lbl{font-size:11px;color:var(--ts);font-weight:700}
+    .date-mark-row .sw{width:26px;height:26px;border-radius:50%;border:2px solid transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;padding:0;background:#fff;transition:transform .1s}
+    .date-mark-row .sw:active{transform:scale(.92)}
+    .date-mark-row .sw.none{border:1.5px dashed var(--bd);color:var(--tl);font-size:14px}
+    .date-mark-row .sw.on{border-color:currentColor;box-shadow:0 0 0 1px #fff inset}
+    .date-mark-row .sw.none.on{border-color:var(--p);color:var(--p)}
+    .holiday-tag{color:#EF4444;font-size:11px;font-weight:800;margin-left:6px;background:#FEF2F2;border:1px solid #FECACA;border-radius:6px;padding:1px 6px}
     .wk-allday{display:grid;grid-template-columns:40px repeat(7,1fr);border-bottom:1px solid var(--bd);min-height:24px;background:#fff}
     .wk-allday-lbl{display:flex;align-items:center;justify-content:flex-end;padding-right:4px;font-size:9px;color:var(--tl);font-weight:600}
     .wk-allday-cell{border-left:1px solid var(--bd);padding:2px 1px;min-height:24px}
@@ -332,6 +343,21 @@ const RECUR_OPTS=[{v:'none',l:'繰り返さない'},{v:'weekly',l:'毎週'},{v:'
 const HOUR_H = 52;   // px per hour in week/day views
 const START_H = 6;   // start hour
 const END_H = 22;    // end hour
+
+// 日本の祝日（2024-2027）。春分/秋分は実測値、それ以外は法定。
+const JP_HOLIDAYS={
+  '2024-01-01':'元日','2024-01-08':'成人の日','2024-02-11':'建国記念の日','2024-02-12':'振替休日','2024-02-23':'天皇誕生日','2024-03-20':'春分の日','2024-04-29':'昭和の日','2024-05-03':'憲法記念日','2024-05-04':'みどりの日','2024-05-05':'こどもの日','2024-05-06':'振替休日','2024-07-15':'海の日','2024-08-11':'山の日','2024-08-12':'振替休日','2024-09-16':'敬老の日','2024-09-22':'秋分の日','2024-09-23':'振替休日','2024-10-14':'スポーツの日','2024-11-03':'文化の日','2024-11-04':'振替休日','2024-11-23':'勤労感謝の日',
+  '2025-01-01':'元日','2025-01-13':'成人の日','2025-02-11':'建国記念の日','2025-02-23':'天皇誕生日','2025-02-24':'振替休日','2025-03-20':'春分の日','2025-04-29':'昭和の日','2025-05-03':'憲法記念日','2025-05-04':'みどりの日','2025-05-05':'こどもの日','2025-05-06':'振替休日','2025-07-21':'海の日','2025-08-11':'山の日','2025-09-15':'敬老の日','2025-09-23':'秋分の日','2025-10-13':'スポーツの日','2025-11-03':'文化の日','2025-11-23':'勤労感謝の日','2025-11-24':'振替休日',
+  '2026-01-01':'元日','2026-01-12':'成人の日','2026-02-11':'建国記念の日','2026-02-23':'天皇誕生日','2026-03-20':'春分の日','2026-04-29':'昭和の日','2026-05-03':'憲法記念日','2026-05-04':'みどりの日','2026-05-05':'こどもの日','2026-05-06':'振替休日','2026-07-20':'海の日','2026-08-11':'山の日','2026-09-21':'敬老の日','2026-09-22':'国民の休日','2026-09-23':'秋分の日','2026-10-12':'スポーツの日','2026-11-03':'文化の日','2026-11-23':'勤労感謝の日',
+  '2027-01-01':'元日','2027-01-11':'成人の日','2027-02-11':'建国記念の日','2027-02-23':'天皇誕生日','2027-03-21':'春分の日','2027-03-22':'振替休日','2027-04-29':'昭和の日','2027-05-03':'憲法記念日','2027-05-04':'みどりの日','2027-05-05':'こどもの日','2027-07-19':'海の日','2027-08-11':'山の日','2027-09-20':'敬老の日','2027-09-23':'秋分の日','2027-10-11':'スポーツの日','2027-11-03':'文化の日','2027-11-23':'勤労感謝の日',
+};
+const isHoliday=date=>JP_HOLIDAYS[date]||null;
+const lightenColor=(hex,alpha=0.22)=>{
+  if(!hex||hex[0]!=='#'||hex.length<7)return null;
+  const n=parseInt(hex.slice(1,7),16);
+  const r=(n>>16)&255,g=(n>>8)&255,b=n&255;
+  return `rgba(${r},${g},${b},${alpha})`;
+};
 
 /* ── UTILS ── */
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
@@ -647,10 +673,11 @@ function WeekView({events,members,diary,selDate,today,onSelectDate,onNavigate,on
           const d=parseD(date);const dow=d.getDay();const dn=d.getDate();
           const isToday=date===today;const isSel=date===selDate;
           const hasDiary=!!(diary[date]?.trim());
+          const hol=isHoliday(date);
           return(
-            <div key={date} className="wk-dhdr" onClick={()=>onSelectDate(date)}>
+            <div key={date} className="wk-dhdr" onClick={()=>onSelectDate(date)} title={hol||''}>
               <div className={`wk-dhdr-name ${dow===0?'sun':''} ${dow===6?'sat':''}`}>{DAYS[dow]}</div>
-              <div className={`wk-dhdr-num ${isToday?'today':''} ${isSel&&!isToday?'sel':''} ${dow===0?'suncol':''} ${dow===6?'satcol':''}`}>{dn}</div>
+              <div className={`wk-dhdr-num ${isToday?'today':''} ${isSel&&!isToday?'sel':''} ${dow===0?'suncol':''} ${dow===6?'satcol':''} ${hol?'holiday':''}`}>{dn}</div>
               {hasDiary&&<div style={{width:5,height:5,borderRadius:1,background:'var(--d)',margin:'2px auto 0'}}/>}
             </div>
           );
@@ -757,7 +784,10 @@ function DayView({events,members,diary,selDate,today,onSelectDate,onEdit,onAdd,o
           </div>
           :<><button className="dv-nav-btn" onClick={prevDay}>‹</button>
             <div className="dv-title-block">
-              <div className="dv-title">{fmtJa(selDate)}</div>
+              <div className="dv-title" style={isHoliday(selDate)?{color:'#EF4444'}:undefined}>
+                {fmtJa(selDate)}
+                {isHoliday(selDate)&&<span className="holiday-tag">🎌 {isHoliday(selDate)}</span>}
+              </div>
               {selDate===today&&<div className="dv-sub" style={{color:'var(--p)'}}>今日</div>}
             </div>
             <button className="dv-nav-btn" onClick={nextDay}>›</button></>
@@ -851,7 +881,7 @@ function DayView({events,members,diary,selDate,today,onSelectDate,onEdit,onAdd,o
 /* ══════════════════════════════════════════════════
    CALENDAR VIEW  (month/week/day container)
 ══════════════════════════════════════════════════ */
-function CalendarView({events,members,diary,onDiaryChange,onAdd,onEdit,onDeleteMultiple}){
+function CalendarView({events,members,diary,dateColors,onSetDateColor,onDiaryChange,onAdd,onEdit,onDeleteMultiple}){
   const[calView,setCalView]=useState('month');  // month | week | day
   const[selDate,setSelDate]=useState(todayStr());
   const today=todayStr();
@@ -936,8 +966,13 @@ function CalendarView({events,members,diary,onDiaryChange,onAdd,onEdit,onDeleteM
                 const hasDiary=!!(diary[date]?.trim());
                 const dow=new Date(date).getDay();
                 const dn=parseInt(date.split('-')[2]);
+                const hol=isHoliday(date);
+                const markId=dateColors?.[date];
+                const markCol=markId?members.find(mm=>mm.id===markId)?.color:null;
+                const cellStyle=markCol?{background:lightenColor(markCol,0.22)}:undefined;
                 return(
-                  <div key={date} className={`dc ${!cur?'other':''} ${date===today?'today':''} ${date===selDate?'sel':''} ${dow===0?'suncol':''} ${dow===6?'satcol':''}`}
+                  <div key={date} className={`dc ${!cur?'other':''} ${date===today?'today':''} ${date===selDate?'sel':''} ${dow===0?'suncol':''} ${dow===6?'satcol':''} ${hol?'holiday':''} ${markCol?'marked':''}`}
+                    style={cellStyle}
                     onClick={()=>setSelDate(date)}>
                     <div className="dn">{dn}</div>
                     <div className="dots">
@@ -953,7 +988,11 @@ function CalendarView({events,members,diary,onDiaryChange,onAdd,onEdit,onDeleteM
           {/* Selected day events */}
           <div className="ev-sec">
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <div className="sec-t" style={{margin:0}}>{fmtJa(selDate)}の予定</div>
+              <div className="sec-t" style={{margin:0}}>
+                {fmtJa(selDate)}
+                {isHoliday(selDate)&&<span className="holiday-tag">🎌 {isHoliday(selDate)}</span>}
+                <span style={{marginLeft:'4px'}}>の予定</span>
+              </div>
               {selEvs.length>0&&(
                 selectMode
                   ?<div style={{display:'flex',gap:'8px'}}>
@@ -963,6 +1002,23 @@ function CalendarView({events,members,diary,onDiaryChange,onAdd,onEdit,onDeleteM
                   :<button onClick={()=>setSelectMode(true)} style={{border:'1.5px solid var(--bd)',background:'#fff',color:'var(--ts)',borderRadius:'8px',padding:'5px 11px',fontWeight:'700',fontSize:'12px',cursor:'pointer',touchAction:'manipulation'}}>選択</button>
               )}
             </div>
+            {/* Date color marker */}
+            {!selectMode&&(
+              <div className="date-mark-row">
+                <span className="lbl">📌 マーク</span>
+                <button className={`sw none ${!dateColors?.[selDate]?'on':''}`} onClick={()=>onSetDateColor(selDate,null)} aria-label="マーク解除">×</button>
+                {members.map(mem=>{
+                  const on=dateColors?.[selDate]===mem.id;
+                  return(
+                    <button key={mem.id} className={`sw ${on?'on':''}`} title={mem.name}
+                      style={{background:lightenColor(mem.color,0.45),color:mem.color}}
+                      onClick={()=>onSetDateColor(selDate,on?null:mem.id)}>
+                      {mem.emoji}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             {selEvs.length===0
               ?<div style={{textAlign:'center',padding:'14px 0',color:'var(--tl)',fontSize:'13px'}}>予定はありません</div>
               :selEvs.map(ev=>{
@@ -1803,6 +1859,7 @@ function App(){
   const[settings,setSettings]=useState(()=>S.get('appSettings',DEF_SETTINGS));
   const[diary,setDiary]=useState(()=>S.get('diary',{}));
   const[venueNotes,setVenueNotes]=useState(()=>S.get('venueNotes',{}));
+  const[dateColors,setDateColors]=useState(()=>S.get('dateColors',{}));
   const[modal,setModal]=useState(null);
   const[syncStatus,setSyncStatus]=useState(null); // null|'syncing'|'ok'|'error'
   const[lastSynced,setLastSynced]=useState(null);
@@ -1810,13 +1867,21 @@ function App(){
   const isPullingRef=React.useRef(false);
   // refs to always access latest state in async callbacks
   const stateRef=React.useRef({});
-  stateRef.current={events,members,diary,venueNotes,settings};
+  stateRef.current={events,members,diary,venueNotes,dateColors,settings};
 
   useEffect(()=>S.set('events',events),[events]);
   useEffect(()=>S.set('members',members),[members]);
   useEffect(()=>S.set('appSettings',settings),[settings]);
   useEffect(()=>S.set('diary',diary),[diary]);
   useEffect(()=>S.set('venueNotes',venueNotes),[venueNotes]);
+  useEffect(()=>S.set('dateColors',dateColors),[dateColors]);
+
+  const setDateColor=(date,memberId)=>setDateColors(p=>{
+    const n={...p};
+    if(!memberId)delete n[date];
+    else n[date]=memberId;
+    return n;
+  });
 
   /* ── Firebase Sync ── */
   const getFbUrl=()=>{
@@ -1838,6 +1903,7 @@ function App(){
         if(Array.isArray(remote.members)&&remote.members.length>0)setMembers(remote.members);
         if(remote.diary&&typeof remote.diary==='object')setDiary(remote.diary);
         if(remote.venueNotes&&typeof remote.venueNotes==='object')setVenueNotes(remote.venueNotes);
+        if(remote.dateColors&&typeof remote.dateColors==='object')setDateColors(remote.dateColors);
       }
       setSyncStatus('ok');setLastSynced(new Date());
     }catch(e){setSyncStatus('error');}
@@ -1846,11 +1912,11 @@ function App(){
 
   const pushSync=async()=>{
     const url=getFbUrl();if(!url)return;
-    const{events:ev,members:me,diary:di,venueNotes:vn}=stateRef.current;
+    const{events:ev,members:me,diary:di,venueNotes:vn,dateColors:dc}=stateRef.current;
     setSyncStatus('syncing');
     try{
       const res=await fetch(url,{method:'PUT',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({events:ev,members:me,diary:di,venueNotes:vn,syncedAt:Date.now()})});
+        body:JSON.stringify({events:ev,members:me,diary:di,venueNotes:vn,dateColors:dc,syncedAt:Date.now()})});
       if(!res.ok)throw new Error('HTTP '+res.status);
       setSyncStatus('ok');setLastSynced(new Date());
     }catch(e){setSyncStatus('error');}
@@ -1873,7 +1939,7 @@ function App(){
     if(syncTimerRef.current)clearTimeout(syncTimerRef.current);
     syncTimerRef.current=setTimeout(pushSync,5000);
     return()=>{if(syncTimerRef.current)clearTimeout(syncTimerRef.current);};
-  },[events,members,diary,venueNotes]);
+  },[events,members,diary,venueNotes,dateColors]);
 
   const saveVenueNote=(name,note)=>{
     setVenueNotes(prev=>{
@@ -1947,7 +2013,7 @@ function App(){
       </div>
 
       <div className="content">
-        {view==='calendar'&&<CalendarView events={events} members={members} diary={diary} onDiaryChange={(d,t)=>setDiary(p=>({...p,[d]:t}))} onAdd={(date,time)=>setModal({initDate:date,initTime:time})} onEdit={ev=>setModal({event:ev,initDate:ev.date})} onDeleteMultiple={delEvents}/>}
+        {view==='calendar'&&<CalendarView events={events} members={members} diary={diary} dateColors={dateColors} onSetDateColor={setDateColor} onDiaryChange={(d,t)=>setDiary(p=>({...p,[d]:t}))} onAdd={(date,time)=>setModal({initDate:date,initTime:time})} onEdit={ev=>setModal({event:ev,initDate:ev.date})} onDeleteMultiple={delEvents}/>}
         {view==='diary'&&<DiaryView diary={diary} onDiaryChange={(d,t)=>setDiary(p=>({...p,[d]:t}))}/>}
         {view==='basketball'&&<BasketballView events={events} members={members} onEdit={ev=>setModal({event:ev,initDate:ev.date})} venueNotes={venueNotes} onSaveVenueNote={saveVenueNote}/>}
         {view==='import'&&<ImportView members={members} onAddEvents={evs=>setEvents(p=>[...p,...evs])}/>}
