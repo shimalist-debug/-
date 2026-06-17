@@ -1850,6 +1850,162 @@ function SettingsView({members,setMembers,settings,setSettings,onPullSync,onPush
 }
 
 /* ══════════════════════════════════════════════════
+   BODY (身長・体重の記録 + グラフ)
+══════════════════════════════════════════════════ */
+const mdJa=s=>{const d=parseD(s);return`${d.getMonth()+1}/${d.getDate()}`};
+function BodyChart({records,metric,color}){
+  // records: 日付昇順、metric値を持つものだけ
+  const pts=records.filter(r=>r[metric]!=null).sort((a,b)=>a.date<b.date?-1:1);
+  if(pts.length===0)return <div style={{padding:'30px 0',textAlign:'center',color:'var(--tl)',fontSize:'13px'}}>まだデータがありません</div>;
+  const W=320,H=180,padL=40,padR=16,padT=20,padB=30;
+  const vals=pts.map(p=>p[metric]);
+  let min=Math.min(...vals),max=Math.max(...vals);
+  if(min===max){min-=1;max+=1;}else{const m=(max-min)*0.18;min-=m;max+=m;}
+  const X=i=>pts.length===1?(padL+(W-padL-padR)/2):padL+i*(W-padL-padR)/(pts.length-1);
+  const Y=v=>padT+(1-(v-min)/(max-min))*(H-padT-padB);
+  const line=pts.map((p,i)=>`${i===0?'M':'L'}${X(i).toFixed(1)},${Y(p[metric]).toFixed(1)}`).join(' ');
+  const fmtV=v=>Math.round(v*10)/10;
+  const showVals=pts.length<=8;
+  return(
+    <svg viewBox={`0 0 ${W} ${H}`} style={{width:'100%',height:'auto',display:'block'}}>
+      {/* Y軸ガイド線・ラベル(上端=max, 下端=min) */}
+      <line x1={padL} y1={padT} x2={padL} y2={H-padB} stroke="var(--bd)" strokeWidth="1"/>
+      <line x1={padL} y1={H-padB} x2={W-padR} y2={H-padB} stroke="var(--bd)" strokeWidth="1"/>
+      <text x={padL-5} y={padT+4} textAnchor="end" fontSize="9" fill="var(--tl)">{fmtV(max)}</text>
+      <text x={padL-5} y={H-padB} textAnchor="end" fontSize="9" fill="var(--tl)">{fmtV(min)}</text>
+      {/* X軸ラベル(最初と最後の日付) */}
+      <text x={X(0)} y={H-padB+14} textAnchor="middle" fontSize="9" fill="var(--tl)">{mdJa(pts[0].date)}</text>
+      {pts.length>1&&<text x={X(pts.length-1)} y={H-padB+14} textAnchor="middle" fontSize="9" fill="var(--tl)">{mdJa(pts[pts.length-1].date)}</text>}
+      {/* 折れ線 */}
+      {pts.length>1&&<path d={line} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round"/>}
+      {/* 点と値 */}
+      {pts.map((p,i)=>(
+        <g key={p.id}>
+          <circle cx={X(i)} cy={Y(p[metric])} r="3.5" fill={color}/>
+          {showVals&&<text x={X(i)} y={Y(p[metric])-7} textAnchor="middle" fontSize="9" fontWeight="700" fill={color}>{fmtV(p[metric])}</text>}
+        </g>
+      ))}
+    </svg>
+  );
+}
+function BodyView({members,bodyRecords,setBodyRecords}){
+  const[sel,setSel]=useState(members[0]?.id||'');
+  const[metric,setMetric]=useState('height');
+  const[date,setDate]=useState(todayStr());
+  const[height,setHeight]=useState('');
+  const[weight,setWeight]=useState('');
+  useEffect(()=>{if(!members.some(m=>m.id===sel))setSel(members[0]?.id||'');},[members,sel]);
+  // 選択中メンバー・日付に既存記録があれば入力欄に反映
+  useEffect(()=>{
+    const list=bodyRecords[sel]||[];
+    const r=list.find(x=>x.date===date);
+    setHeight(r&&r.height!=null?String(r.height):'');
+    setWeight(r&&r.weight!=null?String(r.weight):'');
+  },[sel,date,bodyRecords]);
+  const cur=members.find(m=>m.id===sel);
+  const list=(bodyRecords[sel]||[]).slice().sort((a,b)=>a.date<b.date?1:-1); // 新しい順
+  const color=metric==='height'?'#5B5BF6':'#F59E0B';
+  const save=()=>{
+    const h=height.trim()===''?null:parseFloat(height);
+    const w=weight.trim()===''?null:parseFloat(weight);
+    if((h==null||isNaN(h))&&(w==null||isNaN(w))){alert('身長か体重のどちらかを入力してください');return;}
+    setBodyRecords(prev=>{
+      const arr=[...(prev[sel]||[])];
+      const i=arr.findIndex(r=>r.date===date);
+      const rec={id:i>=0?arr[i].id:uid(),date,height:h!=null&&!isNaN(h)?h:null,weight:w!=null&&!isNaN(w)?w:null};
+      if(i>=0)arr[i]=rec;else arr.push(rec);
+      return{...prev,[sel]:arr};
+    });
+  };
+  const del=id=>{if(!confirm('この記録を削除しますか？'))return;setBodyRecords(prev=>({...prev,[sel]:(prev[sel]||[]).filter(r=>r.id!==id)}));};
+  // 最新値とBMI
+  const latestH=list.find(r=>r.height!=null);
+  const latestW=list.find(r=>r.weight!=null);
+  const bmi=(latestH&&latestW)?(latestW.weight/Math.pow(latestH.height/100,2)):null;
+  return(
+    <div>
+      {/* メンバー選択 */}
+      <div className="ss"><div className="ss-t">メンバー</div>
+        <div className="mem-chips" style={{padding:'0 4px 4px'}}>
+          {members.map(m=>(
+            <div key={m.id} className={`mem-chip ${sel===m.id?'sel':''}`}
+              style={{color:m.color,background:sel===m.id?m.color+'1A':'#fff',borderColor:sel===m.id?m.color:'var(--bd)'}}
+              onClick={()=>setSel(m.id)}>
+              <span>{m.emoji}</span><span style={{color:'var(--t)'}}>{m.name}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {cur&&<>
+        {/* 最新値サマリー */}
+        <div className="ss"><div className="ss-t">最新の記録</div>
+          <div className="sc" style={{display:'flex',padding:'14px'}}>
+            <div style={{flex:1,textAlign:'center'}}>
+              <div style={{fontSize:'10px',color:'var(--ts)',fontWeight:'700'}}>身長</div>
+              <div style={{fontSize:'22px',fontWeight:'800',color:'#5B5BF6'}}>{latestH?latestH.height:'—'}<span style={{fontSize:'12px',fontWeight:'600'}}> cm</span></div>
+            </div>
+            <div style={{flex:1,textAlign:'center',borderLeft:'1px solid var(--bd)',borderRight:'1px solid var(--bd)'}}>
+              <div style={{fontSize:'10px',color:'var(--ts)',fontWeight:'700'}}>体重</div>
+              <div style={{fontSize:'22px',fontWeight:'800',color:'#F59E0B'}}>{latestW?latestW.weight:'—'}<span style={{fontSize:'12px',fontWeight:'600'}}> kg</span></div>
+            </div>
+            <div style={{flex:1,textAlign:'center'}}>
+              <div style={{fontSize:'10px',color:'var(--ts)',fontWeight:'700'}}>BMI</div>
+              <div style={{fontSize:'22px',fontWeight:'800',color:'var(--t)'}}>{bmi?Math.round(bmi*10)/10:'—'}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* グラフ */}
+        <div className="ss"><div className="ss-t">グラフ（{cur.name}）</div>
+          <div className="sc" style={{padding:'12px 10px 6px'}}>
+            <div style={{display:'flex',gap:'8px',padding:'0 6px 6px'}}>
+              <button onClick={()=>setMetric('height')} style={{flex:1,padding:'8px',borderRadius:'10px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'13px',background:metric==='height'?'#5B5BF6':'var(--bg)',color:metric==='height'?'#fff':'var(--ts)'}}>身長</button>
+              <button onClick={()=>setMetric('weight')} style={{flex:1,padding:'8px',borderRadius:'10px',border:'none',cursor:'pointer',fontWeight:'700',fontSize:'13px',background:metric==='weight'?'#F59E0B':'var(--bg)',color:metric==='weight'?'#fff':'var(--ts)'}}>体重</button>
+            </div>
+            <BodyChart records={bodyRecords[sel]||[]} metric={metric} color={color}/>
+          </div>
+        </div>
+
+        {/* 入力フォーム */}
+        <div className="ss"><div className="ss-t">記録する</div>
+          <div className="sc" style={{padding:'14px 0 6px'}}>
+            <div className="fg"><label className="fl">日付</label>
+              <input className="fi" type="date" value={date} onChange={e=>setDate(e.target.value)}/></div>
+            <div className="fr">
+              <div className="fg"><label className="fl">身長 (cm)</label>
+                <input className="fi" type="number" inputMode="decimal" step="0.1" placeholder="例 170.5" value={height} onChange={e=>setHeight(e.target.value)}/></div>
+              <div className="fg"><label className="fl">体重 (kg)</label>
+                <input className="fi" type="number" inputMode="decimal" step="0.1" placeholder="例 62.3" value={weight} onChange={e=>setWeight(e.target.value)}/></div>
+            </div>
+            <button className="btn-p" onClick={save}>この日付で保存</button>
+          </div>
+        </div>
+
+        {/* 記録一覧 */}
+        <div className="ss"><div className="ss-t">記録一覧（{list.length}件）</div>
+          <div className="sc">
+            {list.length===0&&<div style={{padding:'20px',textAlign:'center',color:'var(--tl)',fontSize:'13px'}}>記録はありません</div>}
+            {list.map(r=>(
+              <div key={r.id} className="mr">
+                <div style={{flex:1}}>
+                  <div style={{fontSize:'14px',fontWeight:'600'}}>{fmtJa(r.date)}</div>
+                  <div style={{fontSize:'12px',color:'var(--ts)',marginTop:'2px'}}>
+                    {r.height!=null&&<span style={{marginRight:'12px'}}>身長 {r.height}cm</span>}
+                    {r.weight!=null&&<span>体重 {r.weight}kg</span>}
+                  </div>
+                </div>
+                <button className="x-btn" style={{width:'34px',height:'34px',fontSize:'15px'}} onClick={()=>del(r.id)}>🗑️</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </>}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════
    APP
 ══════════════════════════════════════════════════ */
 function App(){
@@ -1860,6 +2016,7 @@ function App(){
   const[diary,setDiary]=useState(()=>S.get('diary',{}));
   const[venueNotes,setVenueNotes]=useState(()=>S.get('venueNotes',{}));
   const[dateColors,setDateColors]=useState(()=>S.get('dateColors',{}));
+  const[bodyRecords,setBodyRecords]=useState(()=>S.get('bodyRecords',{}));
   const[modal,setModal]=useState(null);
   const[syncStatus,setSyncStatus]=useState(null); // null|'syncing'|'ok'|'error'
   const[lastSynced,setLastSynced]=useState(null);
@@ -1867,7 +2024,7 @@ function App(){
   const isPullingRef=React.useRef(false);
   // refs to always access latest state in async callbacks
   const stateRef=React.useRef({});
-  stateRef.current={events,members,diary,venueNotes,dateColors,settings};
+  stateRef.current={events,members,diary,venueNotes,dateColors,bodyRecords,settings};
 
   useEffect(()=>S.set('events',events),[events]);
   useEffect(()=>S.set('members',members),[members]);
@@ -1875,6 +2032,7 @@ function App(){
   useEffect(()=>S.set('diary',diary),[diary]);
   useEffect(()=>S.set('venueNotes',venueNotes),[venueNotes]);
   useEffect(()=>S.set('dateColors',dateColors),[dateColors]);
+  useEffect(()=>S.set('bodyRecords',bodyRecords),[bodyRecords]);
 
   const setDateColor=(date,memberId)=>setDateColors(p=>{
     const n={...p};
@@ -1904,6 +2062,7 @@ function App(){
         if(remote.diary&&typeof remote.diary==='object')setDiary(remote.diary);
         if(remote.venueNotes&&typeof remote.venueNotes==='object')setVenueNotes(remote.venueNotes);
         if(remote.dateColors&&typeof remote.dateColors==='object')setDateColors(remote.dateColors);
+        if(remote.bodyRecords&&typeof remote.bodyRecords==='object')setBodyRecords(remote.bodyRecords);
       }
       setSyncStatus('ok');setLastSynced(new Date());
     }catch(e){setSyncStatus('error');}
@@ -1912,11 +2071,11 @@ function App(){
 
   const pushSync=async()=>{
     const url=getFbUrl();if(!url)return;
-    const{events:ev,members:me,diary:di,venueNotes:vn,dateColors:dc}=stateRef.current;
+    const{events:ev,members:me,diary:di,venueNotes:vn,dateColors:dc,bodyRecords:br}=stateRef.current;
     setSyncStatus('syncing');
     try{
       const res=await fetch(url,{method:'PUT',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({events:ev,members:me,diary:di,venueNotes:vn,dateColors:dc,syncedAt:Date.now()})});
+        body:JSON.stringify({events:ev,members:me,diary:di,venueNotes:vn,dateColors:dc,bodyRecords:br,syncedAt:Date.now()})});
       if(!res.ok)throw new Error('HTTP '+res.status);
       setSyncStatus('ok');setLastSynced(new Date());
     }catch(e){setSyncStatus('error');}
@@ -1939,7 +2098,7 @@ function App(){
     if(syncTimerRef.current)clearTimeout(syncTimerRef.current);
     syncTimerRef.current=setTimeout(pushSync,5000);
     return()=>{if(syncTimerRef.current)clearTimeout(syncTimerRef.current);};
-  },[events,members,diary,venueNotes,dateColors]);
+  },[events,members,diary,venueNotes,dateColors,bodyRecords]);
 
   const saveVenueNote=(name,note)=>{
     setVenueNotes(prev=>{
@@ -1989,6 +2148,7 @@ function App(){
     {id:'calendar',icon:'📅',label:'カレンダー',cls:''},
     {id:'diary',icon:'📔',label:'日記',cls:'dnav'},
     {id:'basketball',icon:'🏀',label:'バスケ',cls:''},
+    {id:'body',icon:'📈',label:'からだ',cls:''},
     {id:'import',icon:'📥',label:'インポート',cls:''},
     {id:'settings',icon:'⚙️',label:'設定',cls:''},
   ];
@@ -2017,6 +2177,7 @@ function App(){
         {view==='diary'&&<DiaryView diary={diary} onDiaryChange={(d,t)=>setDiary(p=>({...p,[d]:t}))}/>}
         {view==='basketball'&&<BasketballView events={events} members={members} onEdit={ev=>setModal({event:ev,initDate:ev.date})} venueNotes={venueNotes} onSaveVenueNote={saveVenueNote}/>}
         {view==='import'&&<ImportView members={members} onAddEvents={evs=>setEvents(p=>[...p,...evs])}/>}
+        {view==='body'&&<BodyView members={members} bodyRecords={bodyRecords} setBodyRecords={setBodyRecords}/>}
         {view==='settings'&&<SettingsView members={members} setMembers={setMembers} settings={settings} setSettings={setSettings} onPullSync={pullSync} onPushSync={pushSync} syncStatus={syncStatus} lastSynced={lastSynced}/>}
       </div>
 
