@@ -456,7 +456,7 @@ const Toggle=({on,onClick})=><div className={`tog ${on?'on':''}`} onClick={onCli
 function EventModal({event,members,initDate,onSave,onDelete,onClose,venueNotes,onSaveVenueNote,timePresets}){
   const[title,setTitle]=useState(event?.title||'');
   const[date, setDate] =useState(event?.date||initDate||todayStr());
-  const[stime,setStime]=useState(event?.startTime||'');
+  const[stime,setStime]=useState(event?(event.startTime||''):'17:00');
   const[etime,setEtime]=useState(event?.endTime||'');
   const[memId,setMemId]=useState(event?.memberId||members[0]?.id||'');
   const[notes,setNotes]=useState(event?.notes||'');
@@ -543,6 +543,21 @@ function EventModal({event,members,initDate,onSave,onDelete,onClose,venueNotes,o
         <div className="fr">
           <div className="fg"><label className="fl">開始時間</label><input className="fi" type="time" value={stime} onChange={e=>setStime(e.target.value)}/></div>
           <div className="fg"><label className="fl">終了時間</label><input className="fi" type="time" value={etime} onChange={e=>setEtime(e.target.value)}/></div>
+        </div>
+        {/* 所要時間ワンタップ */}
+        <div style={{padding:'0 16px 6px'}}>
+          <div style={{fontSize:'11px',fontWeight:'700',color:'var(--ts)',marginBottom:'6px'}}>所要時間（開始時間から）</div>
+          <div style={{display:'flex',gap:'6px',flexWrap:'wrap'}}>
+            {[{l:'30分',m:30},{l:'1時間',m:60},{l:'2時間',m:120},{l:'4時間',m:240}].map(d=>{
+              const isActive=!!stime&&!!etime&&timeToMin(etime)-timeToMin(stime)===d.m;
+              return(
+                <button key={d.m} onClick={()=>{const s=stime||'17:00';setStime(s);setEtime(minToTime((timeToMin(s)+d.m)%1440));}}
+                  style={{padding:'5px 12px',borderRadius:'20px',border:`1.5px solid ${isActive?'var(--p)':'var(--bd)'}`,background:isActive?'var(--pl)':'#fff',color:isActive?'var(--p)':'var(--ts)',fontSize:'12px',fontWeight:'700',cursor:'pointer',touchAction:'manipulation'}}>
+                  {d.l}
+                </button>
+              );
+            })}
+          </div>
         </div>
         <div className="fg"><label className="fl">メンバー</label></div>
         <div className="mem-chips">
