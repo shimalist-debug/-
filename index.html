@@ -370,6 +370,46 @@ const fmtMonJa=s=>{const d=parseD(s);return`${d.getFullYear()}年 ${d.getMonth()
 const timeToMin=t=>{if(!t)return null;const[h,m]=t.split(':').map(Number);return h*60+m};
 const minToTime=n=>`${pad(Math.floor(n/60))}:${pad(n%60)}`;
 
+/* ── iPhoneカレンダー登録用 ICS 生成（通知＝VALARM付き） ── */
+const buildEventIcs=(ev,reminderMin)=>{
+  const esc=s=>String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
+  const dt=ev.date.replace(/-/g,'');
+  let dtStart,dtEnd;
+  if(ev.startTime){
+    let endT=ev.endTime;
+    if(!endT)endT=minToTime((timeToMin(ev.startTime)+60)%1440); // 終了未設定は1時間扱い
+    dtStart='DTSTART:'+dt+'T'+ev.startTime.replace(':','')+'00';
+    dtEnd='DTEND:'+dt+'T'+endT.replace(':','')+'00';
+  }else{
+    // 終日予定
+    const nd=parseD(ev.date);nd.setDate(nd.getDate()+1);
+    dtStart='DTSTART;VALUE=DATE:'+dt;
+    dtEnd='DTEND;VALUE=DATE:'+fmt(nd).replace(/-/g,'');
+  }
+  const lines=[
+    'BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//basuke//family calendar//JP',
+    'BEGIN:VEVENT',
+    'UID:'+(ev.id||uid())+'@basuke',
+    'DTSTAMP:'+new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,''),
+    dtStart,dtEnd,
+    'SUMMARY:'+esc(ev.title),
+  ];
+  if(ev.notes)lines.push('DESCRIPTION:'+esc(ev.notes));
+  if(reminderMin>0){
+    lines.push('BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:'+esc(ev.title),'TRIGGER:-PT'+reminderMin+'M','END:VALARM');
+  }
+  lines.push('END:VEVENT','END:VCALENDAR');
+  return lines.join('\r\n');
+};
+const downloadIcs=(ev,reminderMin)=>{
+  const blob=new Blob([buildEventIcs(ev,reminderMin)],{type:'text/calendar;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=(ev.title||'予定')+'.ics';
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),10000);
+};
+
 const monthDays=(y,m)=>{
   const days=[];
   const first=new Date(y,m,1),last=new Date(y,m+1,0);
@@ -473,6 +513,7 @@ function EventModal({event,members,initDate,onSave,onDelete,onClose,venueNotes,o
   const updateGame=(idx,f,v)=>setGames(p=>p.map((g,i)=>i===idx?{...g,[f]:v}:g));
   const[recur,setRecur]=useState(event?.recurring||'none');
   const[rEnd, setREnd] =useState(event?.recurEnd||'');
+  const[reminder,setReminder]=useState(event?.reminder||0); // 0=なし / 15 / 60 (分前)
   const[venueNote,setVenueNote]=useState('');
   const[editingVN,setEditingVN]=useState(false);
 
@@ -502,6 +543,7 @@ function EventModal({event,members,initDate,onSave,onDelete,onClose,venueNotes,o
       basketball:isBK?{tournamentName:tourn,venue:venue.trim(),games:games.map(g=>({opponent:g.opponent,myScore:g.myScore!==''?Number(g.myScore):null,opponentScore:g.opponentScore!==''?Number(g.opponentScore):null}))}:null,
       recurring:recur,recurEnd:recur!=='none'?rEnd:null,
       recurGroupId:event?.recurGroupId||null,
+      reminder:reminder||0,
       createdAt:event?.createdAt||new Date().toISOString(),
     };
     onSave(ev,recur!=='none'&&rEnd&&!event?{freq:recur,endDate:rEnd}:null);
@@ -567,6 +609,30 @@ function EventModal({event,members,initDate,onSave,onDelete,onClose,venueNotes,o
               onClick={()=>setMemId(m.id)}>{m.emoji} {m.name}</div>
           ))}
         </div>
+
+        {/* ⏰ 通知（iPhoneカレンダー連携） */}
+        <div className="divider"/>
+        <div className="fg" style={{paddingTop:'12px'}}><label className="fl">⏰ 通知</label></div>
+        <div className="recur-chips">
+          {[{v:0,l:'なし'},{v:15,l:'15分前'},{v:60,l:'1時間前'}].map(o=>(
+            <div key={o.v} className={`recur-chip ${reminder===o.v?'sel':''}`} onClick={()=>setReminder(o.v)}>{o.l}</div>
+          ))}
+        </div>
+        {reminder>0&&(
+          <div className="fg">
+            <button
+              onClick={()=>{
+                if(!title.trim()){alert('タイトルを入力してください');return;}
+                downloadIcs({id:event?.id,title:title.trim(),date,startTime:stime,endTime:etime,notes},reminder);
+              }}
+              style={{width:'100%',padding:'12px',borderRadius:'12px',border:'1.5px solid var(--p)',background:'var(--pl)',color:'var(--p)',fontSize:'14px',fontWeight:'700',cursor:'pointer',touchAction:'manipulation'}}>
+              📅 iPhoneカレンダーに登録（{reminder===15?'15分':'1時間'}前に通知）
+            </button>
+            <div style={{fontSize:'11px',color:'var(--tl)',marginTop:'6px',lineHeight:'1.5'}}>
+              開いたファイルの「追加」をタップすると、iPhone標準カレンダーに予定＋通知が登録されます。通知はiPhoneが出すので、バ・スケを閉じていても届きます
+            </div>
+          </div>
+        )}
 
         {/* Recurring */}
         <div className="divider"/>
